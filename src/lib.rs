@@ -1,20 +1,33 @@
 #![feature(c_unwind)]
 use std::fs;
 use dotenv_parser::parse_dotenv;
+use std::env;
 
 #[macro_use]
 extern crate gmod;
 
+fn read_env_file_var(lookup_var: &str) -> Option<String> {
+    let contents = fs::read_to_string("./garrysmod/.env");
+    if contents.is_err() {
+        return None;
+    }
+    let parsed_env = parse_dotenv(&contents.unwrap());
+
+    if parsed_env.is_err() {
+        return None;
+    }
+
+    parsed_env.unwrap().get(lookup_var).map(|s| s.to_string())
+}
+
 unsafe extern "C-unwind" fn read_env(lua: gmod::lua::State) -> i32 {
-    let contents = fs::read_to_string("./garrysmod/.env")
-        .expect("./garrysmod/.env does not seem to exist");
-
-    let env_vars = parse_dotenv(&contents).unwrap();
     let lookup_var = lua.check_string(1).into_owned();
+    let env_value = read_env_file_var(&lookup_var).or_else(|| {
+        env::var(lookup_var).ok()
+    });
 
-    if env_vars.contains_key(&lookup_var) {
-        let desired_var = &env_vars[&lookup_var];
-        lua.push_string(desired_var);
+    if env_value.is_some() {
+        lua.push_string(env_value.unwrap().as_str());
     } else {
         lua.push_nil();
     }
